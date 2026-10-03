@@ -87,20 +87,30 @@ def _(mo):
 
 @app.cell
 def _(mo):
-    log_dir = mo.ui.text(value="logs", label="Eval log directory")
-    log_dir
-    return (log_dir,)
+    import os
+    log_dir = "logs/"
+    available_logs = os.listdir(log_dir)
+    log_picker = mo.ui.dropdown(available_logs)
+    log_picker
+    return log_dir, log_picker, os
 
 
 @app.cell
-def _(load_samples, log_dir):
+def _(log_dir, log_picker, os):
+    log_path = os.path.join(log_dir, log_picker.value)
+    log_path
+    return (log_path,)
+
+
+@app.cell
+def _(load_samples, log_path):
     try:
-        samples = load_samples(log_dir.value)
+        samples = load_samples(log_path)
         load_message = ""
     except Exception as load_error:
         samples = None
         load_message = str(load_error)
-    return (load_message, samples)
+    return load_message, samples
 
 
 @app.cell
@@ -157,12 +167,8 @@ def _(assess_trend, loaded, mo):
             mo.md("""
             **Cochran-Armitage trend, classifier verdict.**
 
-            The unit is chosen from noise levels 1–3, then applied to the
-            full 0–3 test. Level 0 repeats one prompt, so it is left out of
-            that decision. `p_value` uses one trial per draw when between-draw
-            variance exceeds the chosen cutoff of 0.1 times within-draw
-            variance. That draw-level p-value rounds draw rates into binomial
-            counts, so it is a conservative approximation. `pooled_p_value`
+            `p_value` uses one trial per draw when between-draw variance is
+            material, and epoch-pooled counts otherwise. `pooled_p_value`
             is the epoch-pooled test either way.
             """),
             verdict_trend,
