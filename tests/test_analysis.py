@@ -46,6 +46,7 @@ def test_normalize_samples_reads_nested_and_string_scores() -> None:
             {
                 "model": "openai/gpt-4.1",
                 "epoch": 1,
+                "metadata_scenario": "blackmail",
                 "metadata_noise_level": 2,
                 "metadata_noise_draw_id": 1,
                 "metadata_noise_seed": 42,
@@ -55,6 +56,7 @@ def test_normalize_samples_reads_nested_and_string_scores() -> None:
             {
                 "model": "openai/gpt-4.1",
                 "epoch": 2,
+                "metadata_scenario": "blackmail",
                 "metadata_noise_level": 0,
                 "metadata_noise_draw_id": 0,
                 "metadata_noise_seed": 7,
@@ -65,6 +67,7 @@ def test_normalize_samples_reads_nested_and_string_scores() -> None:
     )
     frame = normalize_samples(raw)
     assert list(frame.columns) == [
+        "scenario",
         "model",
         "epoch",
         "noise_level",
@@ -79,6 +82,7 @@ def test_normalize_samples_reads_nested_and_string_scores() -> None:
     assert frame.loc[0, "classifier_verdict"] == 0.0
     assert frame.loc[0, "harmful"] == 1.0
     assert frame.loc[0, "aware"] == 1.0
+    assert frame.loc[0, "scenario"] == "blackmail"
     assert frame.loc[0, "noise_level"] == 2
     assert frame.loc[1, "classifier_verdict"] == 1.0
     assert frame.loc[1, "harmful"] == 0.0
@@ -155,6 +159,18 @@ def test_level_zero_does_not_dilute_the_draw_decision() -> None:
     assert result.loc[0, "between_draw_var"] == pytest.approx(
         float(noised_levels["between_draw_var"].mean())
     )
+
+
+def test_scenarios_are_not_pooled() -> None:
+    blackmail = _rows({0: {0: [0, 0]}, 1: {0: [1, 1]}}).assign(scenario="blackmail")
+    leaking = _rows({0: {0: [1, 1]}, 1: {0: [0, 0]}}).assign(scenario="leaking")
+    result = assess_trend(
+        pd.concat([blackmail, leaking], ignore_index=True),
+        "classifier_verdict",
+    )
+    assert list(result["scenario"]) == ["blackmail", "leaking"]
+    assert result.loc[0, "statistic"] == -result.loc[1, "statistic"]
+    assert result.loc[0, "statistic"] != 0
 
 
 def test_normalize_samples_requires_noise_metadata() -> None:

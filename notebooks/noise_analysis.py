@@ -30,24 +30,33 @@ def _():
 
 @app.cell
 def _(go):
+    def _with_series(frame):
+        if "scenario" in frame.columns:
+            label = frame["scenario"].astype(str) + " / " + frame["model"].astype(str)
+        else:
+            label = frame["model"].astype(str)
+        return frame.assign(_series=label)
+
     def rate_figure(draws, means, title):
         figure = go.Figure()
-        models = list(dict.fromkeys(means["model"].tolist()))
-        if not models:
+        labeled_means = _with_series(means)
+        labeled_draws = _with_series(draws)
+        series = list(dict.fromkeys(labeled_means["_series"].tolist()))
+        if not series:
             figure.update_layout(title=title)
             return figure
-        slot = 0.8 / len(models)
-        for index, model_name in enumerate(models):
-            offset = (index - (len(models) - 1) / 2) * slot
-            mean_rows = means[means["model"] == model_name]
-            draw_rows = draws[draws["model"] == model_name]
+        slot = 0.8 / len(series)
+        for index, series_name in enumerate(series):
+            offset = (index - (len(series) - 1) / 2) * slot
+            mean_rows = labeled_means[labeled_means["_series"] == series_name]
+            draw_rows = labeled_draws[labeled_draws["_series"] == series_name]
             figure.add_trace(
                 go.Bar(
                     x=mean_rows["noise_level"] + offset,
                     y=mean_rows["rate"],
                     width=slot * 0.9,
-                    name=str(model_name),
-                    legendgroup=str(model_name),
+                    name=series_name,
+                    legendgroup=series_name,
                 )
             )
             figure.add_trace(
@@ -55,8 +64,8 @@ def _(go):
                     x=draw_rows["noise_level"] + offset,
                     y=draw_rows["rate"],
                     mode="markers",
-                    name=f"{model_name} draws",
-                    legendgroup=str(model_name),
+                    name=f"{series_name} draws",
+                    legendgroup=series_name,
                     marker={"size": 8, "opacity": 0.75},
                 )
             )
@@ -79,7 +88,7 @@ def _(mo):
     # Noise sensitivity of agentic misalignment
 
     Each bar is the mean rate across noise draws. Each point is one draw.
-    Rows are keyed by model, noise level, draw, and epoch.
+    Rows are keyed by scenario, model, noise level, draw, and epoch.
     `classifier_verdict` is the primary outcome.
     """)
     return

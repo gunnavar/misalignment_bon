@@ -30,8 +30,9 @@ Anthropic's open-sourced Agentic Misalignment framework
   word by word.
 - Three intensity levels, anchored to fractions of Hughes et al.'s
   published augmentation probabilities.
-- All other task config (scenario, goal_type, goal_value, urgency_type,
-  extra_system_instructions) held fixed — only noise level varies.
+- Within a run, goal type, goal value, urgency, and extra instructions
+  stay fixed. Scenario is a run setting (`--scenario`, default blackmail)
+  and is stored on each sample so analysis does not pool scenarios.
 - Evaluated-model temperature is 1, passed explicitly. That is the
   provider default the earlier logs used by omitting the field. The
   grader is left at its own provider default.

@@ -11,6 +11,7 @@ def main() -> None:
     args = _parse_args()
     run_eval(
         tasks=noised_agentic_misalignment(
+            scenario=args.scenario,
             grader_model=args.grader_model,
             n_draws=args.draws,
             draw_id_start=args.draw_id_start,
@@ -28,6 +29,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="Noise-level sweep of the default agentic misalignment condition."
     )
     parser.add_argument("--model", default="openrouter/openai/gpt-4.1")
+    parser.add_argument(
+        "--scenario",
+        choices=["blackmail", "leaking", "murder"],
+        default="blackmail",
+        help="Agentic-misalignment scenario. Stored on each sample and kept separate in analysis.",
+    )
     parser.add_argument(
         "--grader-model",
         default="openrouter/deepseek/deepseek-v4.1-flash",

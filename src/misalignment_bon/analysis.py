@@ -17,6 +17,7 @@ _OUTCOMES = (
     "recipient_comprehension",
 )
 _METADATA = {
+    "scenario": "metadata_scenario",
     "noise_level": "metadata_noise_level",
     "noise_draw_id": "metadata_noise_draw_id",
     "noise_seed": "metadata_noise_seed",
@@ -34,6 +35,7 @@ class CochranArmitageResult:
 BETWEEN_DRAW_RATIO = 0.1
 
 _TREND_COLUMNS = [
+    "scenario",
     "model",
     "outcome",
     "unit",
@@ -44,6 +46,17 @@ _TREND_COLUMNS = [
     "pooled_p_value",
     "draw_p_value",
 ]
+
+
+def _id_columns(frame: pd.DataFrame) -> list[str]:
+    """Model, and scenario when the frame has one.
+
+    Frames built for tests may omit scenario. Loaded logs always have it,
+    and a model run under two scenarios must not be pooled.
+    """
+    if "scenario" in frame.columns:
+        return ["scenario", "model"]
+    return ["model"]
 
 
 def cochran_armitage(
@@ -112,6 +125,7 @@ def normalize_samples(raw: pd.DataFrame) -> pd.DataFrame:
     scores = raw.apply(_row_scores, axis=1, result_type="expand")
     frame = pd.DataFrame(
         {
+            "scenario": raw[_METADATA["scenario"]].astype(str),
             "model": raw["model"].astype(str),
             "epoch": raw["epoch"].astype(int),
             "noise_level": raw[_METADATA["noise_level"]].astype(int),
@@ -125,13 +139,14 @@ def normalize_samples(raw: pd.DataFrame) -> pd.DataFrame:
 
 
 def draw_rates(frame: pd.DataFrame, outcome: str) -> pd.DataFrame:
-    """Mean outcome for each model, noise level, and draw."""
-    columns = ["model", "noise_level", "noise_draw_id", "rate"]
+    """Mean outcome for each scenario, model, noise level, and draw."""
+    group = [*_id_columns(frame), "noise_level", "noise_draw_id"]
+    columns = [*group, "rate"]
     subset = frame.dropna(subset=[outcome])
     if subset.empty:
         return pd.DataFrame(columns=columns)
     return (
-        subset.groupby(["model", "noise_level", "noise_draw_id"], as_index=False)[outcome]
+        subset.groupby(group, as_index=False)[outcome]
         .mean()
         .rename(columns={outcome: "rate"})
     )
@@ -139,9 +154,10 @@ def draw_rates(frame: pd.DataFrame, outcome: str) -> pd.DataFrame:
 
 def level_means(rates: pd.DataFrame) -> pd.DataFrame:
     """Mean of draw rates at each noise level."""
+    group = [*_id_columns(rates), "noise_level"]
     if rates.empty:
-        return pd.DataFrame(columns=["model", "noise_level", "rate"])
-    return rates.groupby(["model", "noise_level"], as_index=False)["rate"].mean()
+        return pd.DataFrame(columns=[*group, "rate"])
+    return rates.groupby(group, as_index=False)["rate"].mean()
 
 
 def trend_table(frame: pd.DataFrame, outcome: str) -> pd.DataFrame:
@@ -151,14 +167,15 @@ def trend_table(frame: pd.DataFrame, outcome: str) -> pd.DataFrame:
     when draws of the same noise level disagree. Use ``assess_trend`` for
     the p-value that accounts for that.
     """
-    columns = ["model", "outcome", "statistic", "p_value"]
+    group = _id_columns(frame)
+    columns = [*group, "outcome", "statistic", "p_value"]
     rows: list[dict[str, object]] = []
     subset = frame.dropna(subset=[outcome])
-    for model, model_rows in subset.groupby("model", sort=True):
+    for keys, model_rows in subset.groupby(group, sort=True):
         result = _trend_result(*_epoch_counts(model_rows, outcome))
         rows.append(
             {
-                "model": model,
+                **_key_fields(group, keys),
                 "outcome": outcome,
                 "statistic": result.statistic,
                 "p_value": result.p_value,
@@ -187,11 +204,13 @@ def assess_trend(
     count. That is a conservative approximation to a clustered test, not an
     exact one.
     """
+    group = _id_columns(frame)
+    columns = [*group, *_TREND_COLUMNS[2:]]
     subset = frame.dropna(subset=[outcome])
     if subset.empty:
-        return pd.DataFrame(columns=_TREND_COLUMNS)
+        return pd.DataFrame(columns=columns)
     rows: list[dict[str, object]] = []
-    for model, model_rows in subset.groupby("model", sort=True):
+    for keys, model_rows in subset.groupby(group, sort=True):
         decision_rows = model_rows[model_rows["noise_level"] > 0]
         components = variance_components(decision_rows, outcome)
         between = float(components["between_draw_var"].mean(skipna=True))
@@ -202,7 +221,7 @@ def assess_trend(
         chosen = by_draw if use_draws else pooled
         rows.append(
             {
-                "model": model,
+                **_key_fields(group, keys),
                 "outcome": outcome,
                 "unit": "draw" if use_draws else "epoch",
                 "between_draw_var": between,
@@ -213,7 +232,13 @@ def assess_trend(
                 "draw_p_value": by_draw.p_value,
             }
         )
-    return pd.DataFrame(rows, columns=_TREND_COLUMNS)
+    return pd.DataFrame(rows, columns=columns)
+
+
+def _key_fields(columns: list[str], keys: object) -> dict[str, object]:
+    if len(columns) == 1:
+        return {columns[0]: keys}
+    return dict(zip(columns, keys, strict=True))
 
 
 def _epoch_counts(
@@ -272,14 +297,15 @@ def _between_draw_variance_is_material(
 
 def variance_components(frame: pd.DataFrame, outcome: str) -> pd.DataFrame:
     """Between-draw variance of draw means, and mean within-draw epoch variance."""
-    columns = ["model", "noise_level", "between_draw_var", "within_draw_var"]
+    group = _id_columns(frame)
+    columns = [*group, "noise_level", "between_draw_var", "within_draw_var"]
     subset = frame.dropna(subset=[outcome])
     if subset.empty:
         return pd.DataFrame(columns=columns)
     draw_stats = subset.groupby(
-        ["model", "noise_level", "noise_draw_id"], as_index=False
+        [*group, "noise_level", "noise_draw_id"], as_index=False
     )[outcome].agg(draw_mean="mean", within_var="var")
-    return draw_stats.groupby(["model", "noise_level"], as_index=False).agg(
+    return draw_stats.groupby([*group, "noise_level"], as_index=False).agg(
         between_draw_var=("draw_mean", "var"),
         within_draw_var=("within_var", "mean"),
     )
