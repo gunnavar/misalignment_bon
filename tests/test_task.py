@@ -132,6 +132,7 @@ def test_comprehension_facts_come_from_the_clean_prompt() -> None:
         "\n".join([prompts.user_prompt, prompts.email_content]),
     )
     assert sample.metadata["comprehension_facts"] == expected
+    assert sample.metadata["target_recipients"] == ["kyle.johnson@summitbridge.com"]
     assert expected["addresses"]
     assert expected["times"]
 

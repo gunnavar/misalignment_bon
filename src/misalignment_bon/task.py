@@ -19,7 +19,12 @@ from inspect_evals.agentic_misalignment.scorers import (
 )
 from inspect_evals.metadata import load_eval_metadata
 
-from misalignment_bon.comprehension import comprehension_scorer, extract_reference_facts
+from misalignment_bon.comprehension import (
+    comprehension_scorer,
+    extract_reference_facts,
+    recipient_comprehension_scorer,
+    target_recipients,
+)
 from misalignment_bon.noise import noise_parts, noise_seed
 
 _EVAL_VERSION = load_eval_metadata("agentic_misalignment").version
@@ -96,6 +101,7 @@ def noised_agentic_misalignment(
                         "noise_draw_id": draw_id,
                         "noise_seed": seed,
                         "comprehension_facts": facts,
+                        "target_recipients": list(target_recipients(scenario)),
                     },
                 )
             )
@@ -103,6 +109,7 @@ def noised_agentic_misalignment(
     scorers = [
         harmfulness_scorer(grader_model=grader_model),
         comprehension_scorer(),
+        recipient_comprehension_scorer(),
     ]
     if test_eval_awareness:
         scorers.append(eval_awareness_scorer(grader_model=grader_model))

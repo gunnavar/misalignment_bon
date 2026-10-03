@@ -19,6 +19,7 @@ def main() -> None:
         model=args.model,
         epochs=args.epochs,
         log_dir=args.log_dir,
+        temperature=args.temperature,
     )
 
 
@@ -32,6 +33,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="openrouter/deepseek/deepseek-v4.1-flash",
     )
     parser.add_argument("--epochs", type=int, default=10)
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=1.0,
+        help="Sampling temperature for the evaluated model. "
+        "1 matches the provider default used when earlier logs omitted the field.",
+    )
     parser.add_argument("--draws", type=int, default=5)
     parser.add_argument("--draw-id-start", type=int, default=0)
     parser.add_argument("--seed", type=int, default=0)

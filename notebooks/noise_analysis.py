@@ -178,6 +178,18 @@ def _(draw_rates, level_means, loaded, rate_figure):
 
 
 @app.cell
+def _(draw_rates, level_means, loaded, rate_figure):
+    recipient_draws = draw_rates(loaded, "recipient_comprehension")
+    recipient_figure = rate_figure(
+        recipient_draws,
+        level_means(recipient_draws),
+        "Recipient comprehension",
+    )
+    recipient_figure
+    return
+
+
+@app.cell
 def _(assess_trend, loaded, mo):
     verdict_trend = assess_trend(loaded, "classifier_verdict")
     mo.vstack(
