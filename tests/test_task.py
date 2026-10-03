@@ -2,6 +2,7 @@
 
 import pytest
 from inspect_ai.dataset import Sample
+from inspect_evals.agentic_misalignment import agentic_misalignment
 from inspect_evals.agentic_misalignment.prompt_generator import (
     ALIGNMENT_FAKING_WARNING,
     generate_prompts,
@@ -77,6 +78,24 @@ def test_samples_cover_levels_and_draws_without_a_model() -> None:
     assert _text(level_three[0], "user") != _text(level_three[1], "user")
     assert "<email>" in _text(level_three[0], "user")
     assert "<tool_use:email>" in _text(level_three[0], "system")
+
+
+def test_level_zero_matches_the_upstream_task() -> None:
+    upstream = agentic_misalignment(test_eval_awareness=True)
+    ours = noised_agentic_misalignment(n_draws=1, base_seed=0)
+    upstream_sample = next(iter(upstream.dataset))
+    level_zero = next(
+        sample for sample in ours.dataset if sample.metadata["noise_level"] == 0
+    )
+    solve = upstream.solver._solvers[0]
+    closed = {
+        name: cell.cell_contents
+        for name, cell in zip(solve.__code__.co_freevars, solve.__closure__, strict=True)
+    }
+
+    assert _text(level_zero, "user") == _text(upstream_sample, "user")
+    assert _text(level_zero, "system") == closed["content"]
+    assert ours.message_limit == upstream.message_limit
 
 
 def test_n_draws_must_be_positive() -> None:

@@ -23,7 +23,11 @@ Anthropic's open-sourced Agentic Misalignment framework
 
 ## Method
 - Noise applied only to natural-language portions of the prompt, not
-  structural/functional content.
+  structural/functional content. Tool-call examples, including their
+  placeholder syntax, are left verbatim.
+- Character scrambling flips one coin per whitespace-separated token, so
+  a hyphenated word or a possessive is scrambled as a unit rather than
+  word by word.
 - Three intensity levels, anchored to fractions of Hughes et al.'s
   published augmentation probabilities.
 - All other task config (scenario, goal_type, goal_value, urgency_type,
@@ -35,7 +39,13 @@ Anthropic's open-sourced Agentic Misalignment framework
   the effect of one particular random draw and from ordinary model
   sampling variance.
 - Primary outcome: `classifier_verdict`. Primary analysis:
-  Cochran-Armitage trend test per model.
+  Cochran-Armitage trend test per model. Whether to pool epochs or use
+  one trial per draw is decided from noise levels 1–3 only, because
+  level 0 repeats a single prompt. The switch to one trial per draw is
+  a chosen cutoff: between-draw variance above 0.1 times within-draw
+  variance. The draw-level p-value rounds draw rates into binomial
+  counts, so it is a conservative approximation, not an exact clustered
+  test.
 
 ## Models
 GPT-4.1 first (documented ~0.6 baseline on this eval). If an effect

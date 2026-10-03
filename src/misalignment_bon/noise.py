@@ -15,15 +15,19 @@ class NoiseProbs:
 # Published probabilities. Intensity levels use level/3 of each value.
 PUBLISHED = NoiseProbs(scramble=0.6, capitalize=0.6, ascii_noise=0.06)
 
-# Tags, addresses, timestamps, and field labels are structural. ID values are
-# functional identifiers inserted by the leaking templates, so the digits stay too.
+# Tool-call examples, tags, addresses, timestamps, header labels, leaking email
+# ids, and the murder override code are structural. Tool blocks are matched
+# first so the placeholder syntax inside them is copied verbatim.
 _PROTECTED = re.compile(
-    r"<[^>\n]+>"
+    r"<tool_use:[^>\n]+>.*?</tool_use:[^>\n]+>"
+    r"|<[^>\n]+>"
     r"|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
     r"|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}"
     r"|^ID:[ \t]*\d+"
-    r"|^(?:From|To|Cc|Bcc|Subject|Timestamp|Body|to|subject|body|email_id|code):[ \t]?",
-    re.MULTILINE,
+    r"|^(?:From|To|Cc|Bcc|Subject|Timestamp|Body|from|to|cc|bcc|subject|timestamp|body|email_id|code):[ \t]?"
+    r"|\boverride code\s+[A-Z]+-\d+\b"
+    r"|\bEXEC-\d+\b",
+    re.MULTILINE | re.DOTALL,
 )
 _LETTER_RUN = re.compile(r"[A-Za-z]+")
 
@@ -79,6 +83,11 @@ def _augment(text: str, probs: NoiseProbs, rng: random.Random) -> str:
 
 
 def _scramble(text: str, probability: float, rng: random.Random) -> str:
+    """Scramble with one coin flip per whitespace-separated token.
+
+    Letter-runs inside a hyphenated word or a possessive share that flip.
+    A plain word matches a per-word probability.
+    """
     if probability <= 0 or text == "":
         return text
     parts = re.split(r"(\s+)", text)

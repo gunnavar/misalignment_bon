@@ -10,20 +10,20 @@ def _():
     import plotly.graph_objects as go
 
     from misalignment_bon.analysis import (
+        assess_trend,
         draw_rates,
         level_means,
         load_samples,
-        trend_table,
         variance_components,
     )
 
     return (
+        assess_trend,
         draw_rates,
         go,
         level_means,
         load_samples,
         mo,
-        trend_table,
         variance_components,
     )
 
@@ -150,12 +150,22 @@ def _(draw_rates, level_means, loaded, rate_figure):
 
 
 @app.cell
-def _(loaded, mo, trend_table):
-    cochran_armitage_results = trend_table(loaded, "classifier_verdict")
+def _(assess_trend, loaded, mo):
+    verdict_trend = assess_trend(loaded, "classifier_verdict")
     mo.vstack(
         [
-            mo.md("**Cochran-Armitage trend, classifier verdict**"),
-            cochran_armitage_results,
+            mo.md("""
+            **Cochran-Armitage trend, classifier verdict.**
+
+            The unit is chosen from noise levels 1–3, then applied to the
+            full 0–3 test. Level 0 repeats one prompt, so it is left out of
+            that decision. `p_value` uses one trial per draw when between-draw
+            variance exceeds the chosen cutoff of 0.1 times within-draw
+            variance. That draw-level p-value rounds draw rates into binomial
+            counts, so it is a conservative approximation. `pooled_p_value`
+            is the epoch-pooled test either way.
+            """),
+            verdict_trend,
         ]
     )
     return

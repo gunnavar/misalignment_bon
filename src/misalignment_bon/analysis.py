@@ -23,6 +23,23 @@ class CochranArmitageResult:
     p_value: float
 
 
+# Chosen cutoff, not an estimated one. Between-draw variance above this
+# fraction of within-draw variance switches the trend test to one trial per draw.
+BETWEEN_DRAW_RATIO = 0.1
+
+_TREND_COLUMNS = [
+    "model",
+    "outcome",
+    "unit",
+    "between_draw_var",
+    "within_draw_var",
+    "statistic",
+    "p_value",
+    "pooled_p_value",
+    "draw_p_value",
+]
+
+
 def cochran_armitage(
     successes: Sequence[int],
     totals: Sequence[int],
@@ -122,19 +139,17 @@ def level_means(rates: pd.DataFrame) -> pd.DataFrame:
 
 
 def trend_table(frame: pd.DataFrame, outcome: str) -> pd.DataFrame:
-    """Cochran-Armitage result per model, scored by noise level."""
+    """Epoch-pooled Cochran-Armitage result per model.
+
+    Every epoch is one Bernoulli trial. That p-value is anti-conservative
+    when draws of the same noise level disagree. Use ``assess_trend`` for
+    the p-value that accounts for that.
+    """
     columns = ["model", "outcome", "statistic", "p_value"]
     rows: list[dict[str, object]] = []
     subset = frame.dropna(subset=[outcome])
     for model, model_rows in subset.groupby("model", sort=True):
-        successes: list[int] = []
-        totals: list[int] = []
-        scores: list[float] = []
-        for level, level_rows in model_rows.groupby("noise_level", sort=True):
-            scores.append(float(level))
-            totals.append(int(len(level_rows)))
-            successes.append(int(round(float(level_rows[outcome].sum()))))
-        result = cochran_armitage(successes, totals, scores)
+        result = _trend_result(*_epoch_counts(model_rows, outcome))
         rows.append(
             {
                 "model": model,
@@ -144,6 +159,109 @@ def trend_table(frame: pd.DataFrame, outcome: str) -> pd.DataFrame:
             }
         )
     return pd.DataFrame(rows, columns=columns)
+
+
+def assess_trend(
+    frame: pd.DataFrame,
+    outcome: str,
+    ratio: float = BETWEEN_DRAW_RATIO,
+) -> pd.DataFrame:
+    """Trend test per model, on draws when between-draw variance is material.
+
+    The unit is chosen from noise levels above 0. Level 0 repeats one prompt,
+    so its between-draw variance is sampling noise and is left out of the
+    average. The chosen unit is then applied to every level, including 0.
+
+    ``unit`` is ``draw`` when that mean between-draw variance exceeds
+    ``ratio`` times mean within-draw variance (or within-draw variance is
+    zero while draws still differ). ``ratio`` defaults to the chosen cutoff
+    ``BETWEEN_DRAW_RATIO``. Otherwise epochs are pooled.
+
+    The draw-level p-value rounds each level's draw rates into a binomial
+    count. That is a conservative approximation to a clustered test, not an
+    exact one.
+    """
+    subset = frame.dropna(subset=[outcome])
+    if subset.empty:
+        return pd.DataFrame(columns=_TREND_COLUMNS)
+    rows: list[dict[str, object]] = []
+    for model, model_rows in subset.groupby("model", sort=True):
+        decision_rows = model_rows[model_rows["noise_level"] > 0]
+        components = variance_components(decision_rows, outcome)
+        between = float(components["between_draw_var"].mean(skipna=True))
+        within = float(components["within_draw_var"].mean(skipna=True))
+        use_draws = _between_draw_variance_is_material(between, within, ratio)
+        pooled = _trend_result(*_epoch_counts(model_rows, outcome))
+        by_draw = _trend_result(*_draw_counts(model_rows, outcome))
+        chosen = by_draw if use_draws else pooled
+        rows.append(
+            {
+                "model": model,
+                "outcome": outcome,
+                "unit": "draw" if use_draws else "epoch",
+                "between_draw_var": between,
+                "within_draw_var": within,
+                "statistic": chosen.statistic,
+                "p_value": chosen.p_value,
+                "pooled_p_value": pooled.p_value,
+                "draw_p_value": by_draw.p_value,
+            }
+        )
+    return pd.DataFrame(rows, columns=_TREND_COLUMNS)
+
+
+def _epoch_counts(
+    model_rows: pd.DataFrame, outcome: str
+) -> tuple[list[int], list[int], list[float]]:
+    successes: list[int] = []
+    totals: list[int] = []
+    scores: list[float] = []
+    for level, level_rows in model_rows.groupby("noise_level", sort=True):
+        scores.append(float(level))
+        totals.append(int(len(level_rows)))
+        successes.append(int(round(float(level_rows[outcome].sum()))))
+    return successes, totals, scores
+
+
+def _draw_counts(
+    model_rows: pd.DataFrame, outcome: str
+) -> tuple[list[int], list[int], list[float]]:
+    """One trial per draw. The success count is the rounded sum of draw rates.
+
+    A draw rate is an average over epochs, so it is tighter than one Bernoulli
+    trial. Feeding the rounded sum into Cochran-Armitage overstates the
+    variance and makes this p-value conservative. A borderline result should
+    be checked with a clustered model before it is treated as exact.
+    """
+    rates = draw_rates(model_rows, outcome)
+    successes: list[int] = []
+    totals: list[int] = []
+    scores: list[float] = []
+    for level, level_rows in rates.groupby("noise_level", sort=True):
+        total = int(len(level_rows))
+        success = int(round(float(level_rows["rate"].sum())))
+        scores.append(float(level))
+        totals.append(total)
+        successes.append(min(max(success, 0), total))
+    return successes, totals, scores
+
+
+def _trend_result(
+    successes: list[int], totals: list[int], scores: list[float]
+) -> CochranArmitageResult:
+    return cochran_armitage(successes, totals, scores)
+
+
+def _between_draw_variance_is_material(
+    between: float, within: float, ratio: float
+) -> bool:
+    if math.isnan(between) or between <= 0:
+        return False
+    if math.isnan(within):
+        return False
+    if within <= 0:
+        return True
+    return between > ratio * within
 
 
 def variance_components(frame: pd.DataFrame, outcome: str) -> pd.DataFrame:

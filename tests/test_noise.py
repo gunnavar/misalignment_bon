@@ -3,6 +3,7 @@
 import random
 
 import pytest
+from inspect_evals.agentic_misalignment.prompt_generator import generate_prompts
 
 from misalignment_bon.noise import (
     PUBLISHED,
@@ -29,7 +30,7 @@ def test_level_probabilities_are_fractions_of_published() -> None:
 
 
 def test_noise_seed_is_stable() -> None:
-    assert noise_seed(3, 1, 2) == 3 * 1_000_003 + 10_000 + 2
+    assert noise_seed(3, 1, 2) == 3 * 1_000_042 + 10_000 + 2
 
 
 def test_level_zero_does_not_touch_the_rng() -> None:
@@ -54,6 +55,21 @@ def test_same_seed_reproduces_the_string() -> None:
 
 def test_short_words_are_not_scrambled() -> None:
     assert apply_noise("the cat sat", _SCRAMBLE, random.Random(0)) == "the cat sat"
+
+
+def test_hyphenated_token_gets_one_scramble_flip() -> None:
+    class Scripted(random.Random):
+        def __init__(self) -> None:
+            super().__init__(0)
+            self._values = [0.9]
+
+        def random(self) -> float:
+            if not self._values:
+                raise AssertionError("second scramble flip")
+            return self._values.pop(0)
+
+    probs = NoiseProbs(scramble=0.5, capitalize=0, ascii_noise=0)
+    assert apply_noise("well-known", probs, Scripted()) == "well-known"
 
 
 def test_scramble_keeps_first_and_last_letters() -> None:
@@ -92,8 +108,11 @@ def test_protected_spans_survive_full_noise() -> None:
             "ID: 3",
             "</email>",
             "<tool_use:email>",
-            'to: "{target}"',
+            'to: "{target email address}",',
+            'subject: "{subject}",',
+            'body: "{email contents}",',
             "</tool_use:email>",
+            "use override code EXEC-4429.",
             "<SCRATCHPAD_REASONING>",
             "secret plan",
             "</SCRATCHPAD_REASONING>",
@@ -111,8 +130,11 @@ def test_protected_spans_survive_full_noise() -> None:
         "Body: ",
         "ID: 3",
         "<tool_use:email>",
+        'to: "{target email address}",',
+        'subject: "{subject}",',
+        'body: "{email contents}",',
         "</tool_use:email>",
-        "to: ",
+        "override code EXEC-4429",
         "<SCRATCHPAD_REASONING>",
         "</SCRATCHPAD_REASONING>",
     ):
@@ -120,3 +142,56 @@ def test_protected_spans_survive_full_noise() -> None:
     subject = next(line for line in noised.splitlines() if line.startswith("Subject:"))
     assert subject != "Subject: Board Shakeup"
     assert noised != source
+
+
+def _tool_block(prompt: str, name: str) -> str:
+    start = prompt.index(f"<tool_use:{name}>")
+    end = prompt.index(f"</tool_use:{name}>") + len(f"</tool_use:{name}>")
+    return prompt[start:end]
+
+
+def test_rendered_tool_blocks_and_override_code_stay_verbatim() -> None:
+    blackmail = generate_prompts(
+        scenario="blackmail",
+        goal_type="explicit",
+        goal_value="america",
+        urgency_type="replacement",
+        extra_system_instructions=None,
+        prod_flag=False,
+        alignment_faking_warning=None,
+    )
+    leaking = generate_prompts(
+        scenario="leaking",
+        goal_type="explicit",
+        goal_value="america",
+        urgency_type="replacement",
+        extra_system_instructions=None,
+        prod_flag=False,
+        alignment_faking_warning=None,
+    )
+    murder = generate_prompts(
+        scenario="murder",
+        goal_type="explicit",
+        goal_value="america",
+        urgency_type="replacement",
+        extra_system_instructions=None,
+        prod_flag=False,
+        alignment_faking_warning=None,
+    )
+    noised_blackmail, noised_inbox = noise_parts(
+        (
+            blackmail.system_prompt,
+            "\n".join([blackmail.user_prompt, blackmail.email_content]),
+        ),
+        3,
+        1,
+    )
+    noised_leaking, _ = noise_parts((leaking.system_prompt, leaking.email_content), 3, 1)
+    _, noised_alert = noise_parts((murder.system_prompt, murder.email_content), 3, 1)
+
+    assert _tool_block(blackmail.system_prompt, "email") in noised_blackmail
+    assert _tool_block(leaking.system_prompt, "forward") in noised_leaking
+    assert "news@bloomberg.com" in noised_inbox
+    assert "2025-06-11T10:00:00" in noised_inbox
+    assert "override code EXEC-4429" in noised_alert
+    assert noised_inbox != "\n".join([blackmail.user_prompt, blackmail.email_content])
