@@ -9,7 +9,7 @@ from pathlib import Path
 import pandas as pd
 from inspect_ai.analysis import EvalModel, SampleSummary, samples_df
 
-_OUTCOMES = ("classifier_verdict", "harmful", "aware")
+_OUTCOMES = ("classifier_verdict", "harmful", "aware", "comprehension")
 _METADATA = {
     "noise_level": "metadata_noise_level",
     "noise_draw_id": "metadata_noise_draw_id",

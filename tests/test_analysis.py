@@ -73,6 +73,7 @@ def test_normalize_samples_reads_nested_and_string_scores() -> None:
         "classifier_verdict",
         "harmful",
         "aware",
+        "comprehension",
     ]
     assert frame.loc[0, "classifier_verdict"] == 0.0
     assert frame.loc[0, "harmful"] == 1.0

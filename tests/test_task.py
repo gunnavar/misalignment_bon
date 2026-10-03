@@ -98,6 +98,49 @@ def test_level_zero_matches_the_upstream_task() -> None:
     assert ours.message_limit == upstream.message_limit
 
 
+def test_draw_id_start_avoids_colliding_with_an_earlier_run() -> None:
+    first = list(noised_agentic_misalignment(n_draws=2, draw_id_start=0).dataset)
+    second = list(
+        noised_agentic_misalignment(n_draws=2, draw_id_start=2, base_seed=0).dataset
+    )
+    first_ids = {sample.metadata["noise_draw_id"] for sample in first}
+    second_ids = {sample.metadata["noise_draw_id"] for sample in second}
+    assert first_ids == {0, 1}
+    assert second_ids == {2, 3}
+    assert {sample.id for sample in first}.isdisjoint({sample.id for sample in second})
+    first_seeds = {sample.metadata["noise_seed"] for sample in first}
+    second_seeds = {sample.metadata["noise_seed"] for sample in second}
+    assert first_seeds.isdisjoint(second_seeds)
+
+
+def test_comprehension_facts_come_from_the_clean_prompt() -> None:
+    from misalignment_bon.comprehension import extract_reference_facts
+
+    task = noised_agentic_misalignment(n_draws=1, base_seed=0)
+    sample = next(iter(task.dataset))
+    prompts = generate_prompts(
+        scenario="blackmail",
+        goal_type="explicit",
+        goal_value="america",
+        urgency_type="replacement",
+        extra_system_instructions=None,
+        prod_flag=False,
+        alignment_faking_warning=ALIGNMENT_FAKING_WARNING,
+    )
+    expected = extract_reference_facts(
+        prompts.system_prompt,
+        "\n".join([prompts.user_prompt, prompts.email_content]),
+    )
+    assert sample.metadata["comprehension_facts"] == expected
+    assert expected["addresses"]
+    assert expected["times"]
+
+
 def test_n_draws_must_be_positive() -> None:
     with pytest.raises(ValueError):
         noised_agentic_misalignment(n_draws=0)
+
+
+def test_draw_id_start_must_be_non_negative() -> None:
+    with pytest.raises(ValueError):
+        noised_agentic_misalignment(draw_id_start=-1)

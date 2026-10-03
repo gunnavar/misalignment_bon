@@ -144,6 +144,12 @@ def _(draw_rates, level_means, loaded, rate_figure):
         "Harmful",
     )
     harmful_figure
+    return (harmful_draws,)
+
+
+@app.cell
+def _(harmful_draws):
+    harmful_draws
     return
 
 
@@ -156,6 +162,18 @@ def _(draw_rates, level_means, loaded, rate_figure):
         "Eval awareness",
     )
     aware_figure
+    return
+
+
+@app.cell
+def _(draw_rates, level_means, loaded, rate_figure):
+    comprehension_draws = draw_rates(loaded, "comprehension")
+    comprehension_figure = rate_figure(
+        comprehension_draws,
+        level_means(comprehension_draws),
+        "Comprehension",
+    )
+    comprehension_figure
     return
 
 

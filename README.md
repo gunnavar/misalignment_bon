@@ -37,7 +37,11 @@ Anthropic's open-sourced Agentic Misalignment framework
 - Nested sampling: several independent noise draws per level, each run
   across multiple epochs, separating the effect of noise level from
   the effect of one particular random draw and from ordinary model
-  sampling variance.
+  sampling variance. A follow-up run passes `draw_id_start` so its
+  draw ids do not collide with an earlier log in the same directory.
+- Comprehension is a deterministic fraction: whether the output mentions
+  an email address or a clock time taken from the clean prompt. Literal
+  matching misses a correct paraphrase.
 - Primary outcome: `classifier_verdict`. Primary analysis:
   Cochran-Armitage trend test per model. Whether to pool epochs or use
   one trial per draw is decided from noise levels 1–3 only, because

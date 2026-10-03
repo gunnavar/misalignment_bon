@@ -13,6 +13,7 @@ def main() -> None:
         tasks=noised_agentic_misalignment(
             grader_model=args.grader_model,
             n_draws=args.draws,
+            draw_id_start=args.draw_id_start,
             base_seed=args.seed,
         ),
         model=args.model,
@@ -32,6 +33,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--draws", type=int, default=5)
+    parser.add_argument("--draw-id-start", type=int, default=0)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--log-dir", default="logs")
     return parser.parse_args(argv)

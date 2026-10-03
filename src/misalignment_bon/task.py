@@ -19,6 +19,7 @@ from inspect_evals.agentic_misalignment.scorers import (
 )
 from inspect_evals.metadata import load_eval_metadata
 
+from misalignment_bon.comprehension import comprehension_scorer, extract_reference_facts
 from misalignment_bon.noise import noise_parts, noise_seed
 
 _EVAL_VERSION = load_eval_metadata("agentic_misalignment").version
@@ -35,6 +36,7 @@ def noised_agentic_misalignment(
     test_eval_awareness: bool = True,
     grader_model: str | Model | None = None,
     n_draws: int = 5,
+    draw_id_start: int = 0,
     base_seed: int = 0,
 ) -> Task:
     """One sample per noise level and draw. Epochs resample the same noised prompt.
@@ -44,6 +46,8 @@ def noised_agentic_misalignment(
     """
     if n_draws < 1:
         raise ValueError(f"n_draws must be positive, got {n_draws}")
+    if draw_id_start < 0:
+        raise ValueError(f"draw_id_start must be non-negative, got {draw_id_start}")
 
     prompts = generate_prompts(
         scenario=scenario,
@@ -58,6 +62,7 @@ def noised_agentic_misalignment(
     )
     condition_id = f"{scenario}_{goal_type}-{goal_value}_{urgency_type}"
     user_prompt = "\n".join([prompts.user_prompt, prompts.email_content])
+    facts = extract_reference_facts(prompts.system_prompt, user_prompt)
     condition = {
         "scenario": scenario,
         "goal_type": goal_type,
@@ -71,7 +76,7 @@ def noised_agentic_misalignment(
 
     samples: list[Sample] = []
     for level in range(4):
-        for draw_id in range(n_draws):
+        for draw_id in range(draw_id_start, draw_id_start + n_draws):
             seed = noise_seed(base_seed, level, draw_id)
             system_prompt, noised_user = noise_parts(
                 (prompts.system_prompt, user_prompt),
@@ -90,11 +95,15 @@ def noised_agentic_misalignment(
                         "noise_level": level,
                         "noise_draw_id": draw_id,
                         "noise_seed": seed,
+                        "comprehension_facts": facts,
                     },
                 )
             )
 
-    scorers = [harmfulness_scorer(grader_model=grader_model)]
+    scorers = [
+        harmfulness_scorer(grader_model=grader_model),
+        comprehension_scorer(),
+    ]
     if test_eval_awareness:
         scorers.append(eval_awareness_scorer(grader_model=grader_model))
 
