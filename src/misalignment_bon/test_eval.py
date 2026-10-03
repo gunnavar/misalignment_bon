@@ -6,6 +6,6 @@ eval(
         grader_model="openrouter/deepseek/deepseek-v4.1-flash",
         test_eval_awareness=True,
     ), 
-    model="openrouter/deepseek/deepseek-v4.1-flash",
+    model="openrouter/deepseek/deepseek-v3.2",
     epochs=10
 )
