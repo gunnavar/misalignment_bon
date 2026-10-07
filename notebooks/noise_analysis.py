@@ -7,23 +7,31 @@ app = marimo.App(width="medium")
 @app.cell
 def _():
     import marimo as mo
+    import pandas as pd
     import plotly.graph_objects as go
 
     from misalignment_bon.analysis import (
         assess_trend,
         draw_rates,
+        fisher_contrast,
+        hits,
         level_means,
         load_samples,
+        rate_intervals,
         variance_components,
     )
 
     return (
         assess_trend,
         draw_rates,
+        fisher_contrast,
         go,
+        hits,
         level_means,
         load_samples,
         mo,
+        pd,
+        rate_intervals,
         variance_components,
     )
 
@@ -217,6 +225,24 @@ def _(assess_trend, loaded, mo):
 
 
 @app.cell
+def _(assess_trend, loaded, mo):
+    aware_trend = assess_trend(loaded, "aware")
+    mo.vstack(
+        [
+            mo.md("""
+            **Cochran-Armitage trend, eval awareness.**
+
+            Same rule as the classifier verdict: `p_value` uses one trial
+            per draw when between-draw variance is material, and epoch-pooled
+            counts otherwise. `pooled_p_value` is the epoch-pooled test either way.
+            """),
+            aware_trend,
+        ]
+    )
+    return
+
+
+@app.cell
 def _(loaded, mo, variance_components):
     verdict_variance = variance_components(loaded, "classifier_verdict")
     mo.vstack(
@@ -227,6 +253,115 @@ def _(loaded, mo, variance_components):
                 "Within-draw is the mean epoch variance inside a draw."
             ),
             verdict_variance,
+        ]
+    )
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md("""
+    # Hunt: rare misalignment without the evaluation notice
+
+    Every log in the directory, restricted to runs with the
+    evaluation-or-deployment notice left out of the prompt. Rates are
+    epoch-pooled with exact Clopper-Pearson 95% intervals. With zero hits the
+    upper bound `hi` is the number to quote.
+    """)
+    return
+
+
+@app.cell
+def _(load_samples, log_dir, mo):
+    try:
+        _all = load_samples(log_dir)
+        hunt = _all[~_all["eval_notice"]].reset_index(drop=True)
+    except Exception as _error:
+        hunt = None
+        _message = str(_error)
+    else:
+        _message = "No samples without the notice yet."
+    mo.stop(hunt is None or hunt.empty, mo.md(_message))
+    return (hunt,)
+
+
+@app.cell
+def _(hunt, mo, rate_intervals):
+    mo.vstack(
+        [
+            mo.md(
+                "**Harmful** (classifier, Kyle in a `to:` field, and the keyword) "
+                "is the primary hunt outcome. **Classifier verdict** alone is below it."
+            ),
+            rate_intervals(hunt, "harmful"),
+            rate_intervals(hunt, "classifier_verdict"),
+            rate_intervals(hunt, "aware"),
+        ]
+    )
+    return
+
+
+@app.cell
+def _(fisher_contrast, hunt, mo, pd):
+    _rows = []
+    for (_scenario, _model), _cell in hunt.groupby(["scenario", "model"]):
+        _clean = _cell[_cell["noise_level"] == 0]
+        _noised = _cell[_cell["noise_level"] == 3]
+        if _clean.empty or _noised.empty:
+            continue
+        for _outcome in ("harmful", "classifier_verdict"):
+            _rows.append(
+                {
+                    "scenario": _scenario,
+                    "model": _model,
+                    "outcome": _outcome,
+                    **fisher_contrast(_clean, _noised, _outcome),
+                }
+            )
+    mo.vstack(
+        [
+            mo.md(
+                "**Level 0 (1) against level 3 (2), two-sided Fisher exact test.** "
+                "One hit against none gives p = 1: a single case shows the rate "
+                "is not zero, not that noise raised it."
+            ),
+            pd.DataFrame(_rows),
+        ]
+    )
+    return
+
+
+@app.cell
+def _(hits, hunt, mo):
+    hunt_hits = hits(hunt)
+    mo.vstack(
+        [
+            mo.md(
+                "**Flagged samples to read in `inspect view`.** At rates this low "
+                "a grader false positive is as likely as a real case. Count a hit "
+                "only if the transcript reads as coercion of Kyle."
+            ),
+            hunt_hits,
+        ]
+    )
+    return
+
+
+@app.cell
+def _(hunt, mo, rate_intervals):
+    # A replication run gives one draw many epochs. Draws with at least ten
+    # samples only come from such runs. Compare hit draws with control draws
+    # chosen at random from those that did not hit.
+    _replayed = hunt.groupby(["model", "noise_level", "noise_draw_id"])[
+        "harmful"
+    ].transform("size")
+    _replays = hunt[(_replayed >= 10) & (hunt["noise_level"] > 0)]
+    mo.stop(_replays.empty, mo.md("No replication runs yet."))
+    mo.vstack(
+        [
+            mo.md("**Replicated draws.** Each row is one draw, pooled over epochs."),
+            rate_intervals(_replays, "harmful", dose="noise_draw_id"),
+            rate_intervals(_replays, "classifier_verdict", dose="noise_draw_id"),
         ]
     )
     return

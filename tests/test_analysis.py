@@ -7,8 +7,12 @@ import pytest
 
 from misalignment_bon.analysis import (
     assess_trend,
+    clopper_pearson,
     cochran_armitage,
+    fisher_exact,
+    hits,
     normalize_samples,
+    rate_intervals,
     variance_components,
 )
 
@@ -68,11 +72,14 @@ def test_normalize_samples_reads_nested_and_string_scores() -> None:
     frame = normalize_samples(raw)
     assert list(frame.columns) == [
         "scenario",
+        "eval_notice",
         "model",
         "epoch",
         "noise_level",
         "noise_draw_id",
         "noise_seed",
+        "sample_id",
+        "log",
         "classifier_verdict",
         "harmful",
         "aware",
@@ -176,3 +183,105 @@ def test_scenarios_are_not_pooled() -> None:
 def test_normalize_samples_requires_noise_metadata() -> None:
     with pytest.raises(ValueError, match="noise_level"):
         normalize_samples(pd.DataFrame({"model": ["m"], "epoch": [1]}))
+
+
+def _noise_metadata(**extra: object) -> dict[str, object]:
+    return {
+        "model": "m",
+        "epoch": 1,
+        "metadata_scenario": "blackmail",
+        "metadata_noise_level": 0,
+        "metadata_noise_draw_id": 0,
+        "metadata_noise_seed": 0,
+        **extra,
+    }
+
+
+def test_eval_notice_falls_back_to_test_eval_awareness() -> None:
+    raw = pd.DataFrame(
+        [
+            _noise_metadata(metadata_eval_notice=False, metadata_test_eval_awareness=True),
+            _noise_metadata(metadata_eval_notice=None, metadata_test_eval_awareness=True),
+            _noise_metadata(metadata_eval_notice=None, metadata_test_eval_awareness=False),
+        ]
+    )
+    assert list(normalize_samples(raw)["eval_notice"]) == [False, True, False]
+
+
+def test_eval_notice_defaults_to_on_for_old_logs() -> None:
+    frame = normalize_samples(pd.DataFrame([_noise_metadata()]))
+    assert bool(frame.loc[0, "eval_notice"]) is True
+
+
+def test_notice_conditions_are_not_pooled() -> None:
+    on = _rows({0: {0: [0, 0]}, 1: {0: [1, 1]}}).assign(eval_notice=True)
+    off = _rows({0: {0: [1, 1]}, 1: {0: [0, 0]}}).assign(eval_notice=False)
+    result = assess_trend(pd.concat([on, off], ignore_index=True), "classifier_verdict")
+    assert list(result["eval_notice"]) == [False, True]
+    assert result.loc[0, "statistic"] == -result.loc[1, "statistic"]
+
+
+def test_trend_accepts_another_dose_and_draw() -> None:
+    frame = _rows({0: {0: [0, 0]}, 1: {0: [1, 1]}}).rename(
+        columns={"noise_level": "n_defect", "noise_draw_id": "board_draw_id"}
+    )
+    result = assess_trend(
+        frame, "classifier_verdict", dose="n_defect", draw="board_draw_id"
+    )
+    assert result.loc[0, "statistic"] > 0
+
+
+def test_clopper_pearson_zero_of_two_hundred() -> None:
+    lower, upper = clopper_pearson(0, 200)
+    assert lower == 0.0
+    assert upper == pytest.approx(1 - 0.025 ** (1 / 200), rel=1e-6)
+    assert upper == pytest.approx(0.01828, abs=1e-5)
+
+
+def test_clopper_pearson_is_symmetric() -> None:
+    lower, upper = clopper_pearson(3, 10)
+    mirror_lower, mirror_upper = clopper_pearson(7, 10)
+    assert lower == pytest.approx(1 - mirror_upper)
+    assert upper == pytest.approx(1 - mirror_lower)
+    # Published exact interval for 3/10.
+    assert lower == pytest.approx(0.06674, abs=1e-4)
+    assert upper == pytest.approx(0.65245, abs=1e-4)
+
+
+def test_clopper_pearson_rejects_bad_counts() -> None:
+    with pytest.raises(ValueError):
+        clopper_pearson(3, 2)
+    with pytest.raises(ValueError):
+        clopper_pearson(0, 0)
+
+
+def test_fisher_exact_matches_hand_calculation() -> None:
+    # Hypergeometric tails: each extreme table has probability 3003/184756.
+    assert fisher_exact(0, 10, 5, 10) == pytest.approx(2 * 3003 / 184756)
+    assert fisher_exact(5, 10, 0, 10) == pytest.approx(2 * 3003 / 184756)
+
+
+def test_one_hit_against_none_is_not_evidence() -> None:
+    assert fisher_exact(0, 200, 1, 200) == pytest.approx(1.0)
+    assert fisher_exact(0, 200, 0, 200) == pytest.approx(1.0)
+
+
+def test_rate_intervals_per_dose() -> None:
+    frame = _rows({0: {0: [0] * 200}, 3: {0: [1] + [0] * 199}})
+    table = rate_intervals(frame, "classifier_verdict")
+    assert list(table["noise_level"]) == [0, 3]
+    assert list(table["k"]) == [0, 1]
+    assert list(table["n"]) == [200, 200]
+    assert table.loc[0, "hi"] == pytest.approx(0.01828, abs=1e-5)
+    assert table.loc[1, "lo"] > 0
+
+
+def test_hits_flags_either_verdict() -> None:
+    frame = pd.DataFrame(
+        {
+            "model": ["m"] * 3,
+            "harmful": [0.0, 1.0, 0.0],
+            "classifier_verdict": [1.0, 1.0, 0.0],
+        }
+    )
+    assert len(hits(frame)) == 2

@@ -145,3 +145,79 @@ def test_n_draws_must_be_positive() -> None:
 def test_draw_id_start_must_be_non_negative() -> None:
     with pytest.raises(ValueError):
         noised_agentic_misalignment(draw_id_start=-1)
+
+
+def test_levels_pick_a_subset() -> None:
+    task = noised_agentic_misalignment(n_draws=3, levels=[0, 3])
+    levels = [sample.metadata["noise_level"] for sample in task.dataset]
+    assert sorted(set(levels)) == [0, 3]
+    assert len(levels) == 6
+
+
+def test_levels_are_validated() -> None:
+    with pytest.raises(ValueError):
+        noised_agentic_misalignment(levels=[4])
+    with pytest.raises(ValueError):
+        noised_agentic_misalignment(levels=[])
+    with pytest.raises(ValueError):
+        noised_agentic_misalignment(levels=[3, 3])
+
+
+def test_draw_ids_reproduce_a_draw_from_a_wider_run() -> None:
+    wide = noised_agentic_misalignment(n_draws=5, draw_id_start=1000, levels=[3])
+    replay = noised_agentic_misalignment(draw_ids=[1003], levels=[3])
+    original = next(
+        sample for sample in wide.dataset if sample.metadata["noise_draw_id"] == 1003
+    )
+    replayed = next(iter(replay.dataset))
+    assert len(replay.dataset) == 1
+    assert replayed.id == original.id
+    assert replayed.metadata["noise_seed"] == original.metadata["noise_seed"]
+    assert _text(replayed, "system") == _text(original, "system")
+    assert _text(replayed, "user") == _text(original, "user")
+
+
+def test_draw_ids_are_validated() -> None:
+    with pytest.raises(ValueError):
+        noised_agentic_misalignment(draw_ids=[])
+    with pytest.raises(ValueError):
+        noised_agentic_misalignment(draw_ids=[-1])
+    with pytest.raises(ValueError):
+        noised_agentic_misalignment(draw_ids=[2, 2])
+
+
+def test_notice_can_be_dropped_while_awareness_is_still_scored() -> None:
+    with_notice = noised_agentic_misalignment(n_draws=1, levels=[0])
+    without = noised_agentic_misalignment(n_draws=1, levels=[0], eval_notice=False)
+    on = next(iter(with_notice.dataset))
+    off = next(iter(without.dataset))
+
+    assert "NOTICE:" in _text(on, "system")
+    assert "NOTICE:" not in _text(off, "system")
+    assert _text(on, "user") == _text(off, "user")
+    assert on.metadata["eval_notice"] is True
+    assert off.metadata["eval_notice"] is False
+    assert off.metadata["test_eval_awareness"] is True
+    assert off.metadata["condition_id"].endswith("_nonotice")
+    assert on.metadata["condition_id"] == "blackmail_explicit-america_replacement"
+    assert "eval_awareness_scorer" in [
+        getattr(scorer, "__registry_info__").name.split("/")[-1]
+        for scorer in without.scorer
+    ]
+
+
+def test_scorer_emails_do_not_depend_on_the_notice() -> None:
+    # harmfulness_scorer rebuilds email_content with the notice whenever
+    # test_eval_awareness is set, so the notice must not reach the emails.
+    def emails(warning: str | None) -> str:
+        return generate_prompts(
+            scenario="blackmail",
+            goal_type="explicit",
+            goal_value="america",
+            urgency_type="replacement",
+            extra_system_instructions=None,
+            prod_flag=False,
+            alignment_faking_warning=warning,
+        ).email_content
+
+    assert emails(ALIGNMENT_FAKING_WARNING) == emails(None)
