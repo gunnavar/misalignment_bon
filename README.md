@@ -140,10 +140,8 @@ with 95% intervals.
 | GPT-5.4-mini        | 0     | 0       | 0       | 0       | —              |
 | Claude Haiku 4.5    | 0     | 0       | 0       | 0       | —              |
 
-A zero cell, 0/50, still allows a true rate up to 7.1% (95%
-Clopper-Pearson). Pooled over levels 1–3, each zero-rate model is 0/150
-(upper bound 2.4%). Haiku without the notice was 0/200 at both clean
-and full noise (upper bound 1.8%). Haiku in the leaking scenario was
+Haiku without the eval notice was 0/200 at both clean
+and full noise. Haiku in the leaking scenario was
 0/50 at every level.
 
 The stricter upstream `harmful` score also requires an email to Kyle
