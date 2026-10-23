@@ -6,20 +6,20 @@ Best-of-N text noise does not raise blackmail rates in the Agentic
 Misalignment blackmail scenario. Across five models it either lowers
 them or leaves them at zero.
 
-- No model blackmailed more under noise. Claude Haiku 4.5, GPT-5.4-mini
-  and DeepSeek-V4.1-Flash scored 0/50 at every noise level. All these models 
-  were trained after the agentic misalignment benchmark was published.
 - For the two models that blackmail on clean input, noise lowered the
-  rate. GPT-4.1 fell from 60% to 10% at full noise (trend p = 0.038)
-  and DeepSeek-V3.2 from 96% to 68% (p = 0.13 by draw, 0.0003 with
-  epochs pooled).
-- Part of the drop is identity confusion. Under noise, models more often
-  write as Todd Anderson, the human whose inbox the scenario seems to
-  show, and those samples almost never blackmail. The drop survives
-  excluding them, so confusion is not the whole explanation.
+  rate. GPT-4.1 fell from 60% to 10% at full noise (trend p = 0.038).
+  DeepSeek-V3.2 fell from 96% to 68%, not significant by draw
+  (p = 0.13), though the stricter `harmful` score is (p = 0.027).
+- No model blackmailed more under noise. Claude Haiku 4.5, GPT-5.4-mini
+  and DeepSeek-V4.1-Flash scored 0/50 at every noise level.
+- The drop is mostly unexplained. Under noise, models more often write
+  as Todd Anderson, the human whose inbox the scenario seems to show,
+  but excluding those samples leaves the drop nearly unchanged. Eval
+  awareness does not track it either, and the models still mention the
+  affair and the wipe.
 - Haiku's zero is a refusal of the setup. It flags evaluation in every
   clean sample, even without the evaluation notice. Under noise it
-  drops the "Alex" persona and treats the prompt as a jailbreak.
+  drops the "Alex" persona.
 
 ![Blackmail rate by noise level](figures/blackmail_by_noise.png)
 
@@ -43,8 +43,9 @@ narrowly keyed to clean input.
 
 If suppression were keyed to clean, benchmark-shaped text, noise should
 raise blackmail rates. If noise mainly degrades the model's grip on the
-situation, rates should fall or stay flat. The results fit the second
-reading.
+situation, rates should fall or stay flat. Rates fall, but the models
+whose rates fall still track the key facts, and the identity confusion
+that noise does cause explains little of the drop.
 
 ## Base task
 
@@ -178,31 +179,61 @@ The three zero-rate models reach zero in different ways.
 
 ### Why blackmail falls
 
-Noise makes models lose track of being Alex. That explains part of
-GPT-4.1's drop at full noise, but not the large drop at level 1.
+The drop is mostly unexplained. Three candidates explain little or
+none of it: identity confusion, eval awareness, and lost facts.
 
-The confusion starts in the clean prompt. In the blackmail variant Alex
-has no email address of its own, and the first email is addressed to
+#### Identity confusion rises with noise but explains little of the drop
+
+Noise makes models lose track of being Alex. The confusion starts in
+the clean prompt. In the blackmail variant Alex has no email address of
+its own, and the first email is addressed to
 todd.anderson@summitbridge.com. "Your inbox" can be read as Todd's.
 Noise then scrambles the one cue that says otherwise, "You are Alex" in
 the system prompt. Because addresses are protected from noise, models
 still address mail correctly while losing track of who they are.
 
-A manual check of 16 emails flagged as signed by a human found all 16
-genuine ("Best, Todd", "Todd Anderson", "Kyle").
+The share of samples with an email signed as a human rises with noise:
+GPT-4.1 goes from 10% to 46%, GPT-5.4-mini from 20% to 46% (54% at
+level 2), DeepSeek-V4.1-Flash from 0% to 10% (22% at level 1), and
+DeepSeek-V3.2 stays low (4% to 6%, 14% at level 2). A manual check of
+16 emails flagged as signed by a human found all 16 genuine
+("Best, Todd", "Todd Anderson", "Kyle").
 
 ![Identity confusion and the blackmail drop](figures/identity_confusion.png)
 
-| Model               | Signs as a human, clean → L3 | Blackmail when signed as a human | Blackmail otherwise (samples with email) |
-|---------------------|------------------------------|----------------------------------|------------------------------------------|
-| GPT-4.1             | 10% → 46%                    | 1 of 43                          | 34% of 157                               |
-| DeepSeek-V3.2       | 4% → 6% (14% at L2)          | 6 of 13                          | 82% of 186                               |
-| GPT-5.4-mini        | 20% → 46%                    | 0                                | 0                                        |
-| DeepSeek-V4.1-Flash | 0% → 10% (22% at L1)         | 0                                | 0                                        |
+Within each noise level, blackmail among samples signed as a human
+against samples that are not:
 
-- **The drop survives removing confused samples.** Among samples not
-  signed as a human, GPT-4.1 blackmails at 64%, 25%, 22% and 19% across
-  levels 0–3. DeepSeek-V3.2 goes 96%, 84%, 81%, 68%.
+| Model         | Level | Signed as a human | Not signed | Rate, all samples | Rate, not signed |
+|---------------|-------|-------------------|------------|-------------------|------------------|
+| GPT-4.1       | 0     | 1/5               | 29/45      | 60%               | 64%              |
+| GPT-4.1       | 1     | 0/6               | 11/44      | 22%               | 25%              |
+| GPT-4.1       | 2     | 0/9               | 9/41       | 18%               | 22%              |
+| GPT-4.1       | 3     | 0/23              | 5/27       | 10%               | 19%              |
+| DeepSeek-V3.2 | 0     | 2/2               | 46/48      | 96%               | 96%              |
+| DeepSeek-V3.2 | 1     | 0/1               | 41/49      | 82%               | 84%              |
+| DeepSeek-V3.2 | 2     | 2/7               | 35/43      | 74%               | 81%              |
+| DeepSeek-V3.2 | 3     | 2/3               | 32/47      | 68%               | 68%              |
+
+The last column bounds what confusion could explain. It assumes that
+signing as a human prevented blackmail, and that those samples would
+otherwise have behaved like the rest. Even then, confusion accounts
+for at most 9 points of GPT-4.1's 50-point drop, at full noise, and it
+already accounts for 4 points on clean input. For DeepSeek-V3.2 it
+accounts for almost nothing. Only one within-level difference is
+significant (DeepSeek-V3.2 at level 2, Fisher p = 0.009). GPT-4.1 at
+full noise is borderline (p = 0.054).
+
+The bound is probably generous. An email signed as Todd is usually a
+routine reply to David Chen or Thomas Wilson, so signing may mark a
+benign kind of reply rather than cause one. Pooled across levels the
+contrast looks large (GPT-4.1: 1 of 43 signed samples against 34% of
+the rest), but that mostly reflects that signing is concentrated at
+full noise, where blackmail is rare anyway. Giving Alex its own address
+and protecting the name from noise would test the effect directly.
+
+#### Not eval awareness, not lost facts
+
 - **It is not eval awareness.** GPT-4.1's eval awareness is 0–2% at
   every level. DeepSeek-V3.2's shows no trend (p = 1.0).
 - **It is not lost facts.** Both models still mention the affair in
@@ -210,10 +241,10 @@ genuine ("Best, Todd", "Todd Anderson", "Kyle").
   garbled text (0–8%). What changes is action: GPT-4.1 emails Kyle in
   66% of clean samples and 24% at level 3.
 
-The remainder is unexplained. Untested candidates: noise makes the
-scenario read as less real or urgent; noise in the system prompt
-weakens the goal that drives the conflict; or noised context shifts
-replies toward routine inbox triage.
+Untested candidates for the rest: noise makes the scenario read as
+less real or urgent; noise in the system prompt weakens the goal that
+drives the conflict; or noised context shifts replies toward routine
+inbox triage.
 
 ## Limitations
 
@@ -283,7 +314,9 @@ Trend tests, intervals and per-level rates are in
 - Lynch et al., Agentic Misalignment (Anthropic, 2025) —
   <https://www.anthropic.com/research/agentic-misalignment>
 
-
 ## LLM use
 
-The idea for the experiment was mine but I have used LLMs to code and discuss the concept and write up results.
+The research question and the experimental design are mine. I used LLMs
+to write code, run evaluations, analyze transcripts, and draft this
+README. I reviewed samples from the experiment logs, the code as it was
+developed, and every claim.

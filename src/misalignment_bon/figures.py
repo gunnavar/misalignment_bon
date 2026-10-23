@@ -95,7 +95,7 @@ def blackmail_by_noise(frame: pd.DataFrame) -> plt.Figure:
 def identity_confusion(frame: pd.DataFrame) -> plt.Figure:
     """Share signed as a human, and blackmail with and without those samples."""
     fig, (left, right) = _figure(
-        "Noise makes models write as a human, but that explains only part of the drop",
+        "Noise makes models write as a human, but that barely changes the blackmail drop",
         "Left: samples with an email signed as a person in the scenario, almost always "
         "Todd. Haiku sends no email and is left out.\n"
         "Right: blackmail rate in all samples (solid) and in samples not signed as a "
